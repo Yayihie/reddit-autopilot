@@ -1,0 +1,48 @@
+[project]
+name = "reddit-autopilot"
+version = "0.1.0"
+description = "All-in-one Reddit growth system: plan where to post, warm up accounts, schedule, and act through your real browser session. Zero-config core, no Reddit API keys required."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "reddit-autopilot contributors"}]
+keywords = ["reddit", "automation", "marketing", "ai-agent", "mcp", "applescript"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Topic :: Internet",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: MacOS",
+]
+# Core is stdlib-only so it runs anywhere. Extras pull in the optional backends.
+dependencies = []
+
+[project.optional-dependencies]
+# Planning/scoring engine (latent-9/reddit-growth-mcp on PyPI)
+growth = ["reddit-growth-mcp>=0.2.1"]
+# Alternative action backend: websocket bridge to a Chrome extension (1146345502/reddit-skills)
+bridge = ["websockets>=12.0"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+reddit-autopilot = "reddit_autopilot.cli:main"
+rap = "reddit_autopilot.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Yayihie/reddit-autopilot"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/reddit_autopilot"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
