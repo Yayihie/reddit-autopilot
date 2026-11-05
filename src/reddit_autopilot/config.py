@@ -17,8 +17,9 @@ CONFIG_PATH = HOME / "config.json"
 QUEUE_PATH = HOME / "queue.db"
 
 DEFAULT_CONFIG: dict = {
+    "mode": "warmup",  # "warmup" disables all links and tightens caps; "normal" allows the 1/day link
     "target_subreddits": [],
-    "posting_window_utc": [13, 16],  # recommended 06-12 UTC is adjusted per-sub by the planner
+    "posting_window_utc": [13, 16],
     "min_minutes_between_actions": 90,
     "warmup_days": 7,
     "warmup_comments_per_day": 3,
@@ -61,3 +62,7 @@ class Config:
     @property
     def subreddits(self) -> list[str]:
         return list(self.data.get("target_subreddits") or [])
+
+    @property
+    def mode(self) -> str:
+        return str(self.data.get("mode", "normal")).lower()

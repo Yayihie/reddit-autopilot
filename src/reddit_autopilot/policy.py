@@ -47,6 +47,14 @@ CRISIS_KEYWORDS = [
 PROMO_HINTS = ["http://", "https://", "www.", ".com", ".org", ".io"]
 
 
+def _current_mode() -> str:
+    try:
+        from reddit_autopilot.config import Config
+        return Config.load().mode
+    except Exception:
+        return "normal"
+
+
 def _now() -> float:
     return time.time()
 
@@ -156,6 +164,8 @@ def check(kind: str, sub: str | None, *, link: bool = False, url: str | None = N
                 hard.append(f"crisis/self-harm keyword '{k}' present; never link in these threads")
 
     if link:
+        if _current_mode() == "warmup":
+            hard.append("warm-up mode is ON: links are disabled until the account is warmed up")
         if comment_karma is not None and comment_karma < cfg["min_comment_karma"]:
             hard.append(
                 f"comment karma {comment_karma} is below {cfg['min_comment_karma']}; a link now "

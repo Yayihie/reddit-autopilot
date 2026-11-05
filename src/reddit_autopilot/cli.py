@@ -92,6 +92,27 @@ def cmd_warmup(args) -> int:
         _print(warmup.plan_day(c.get("warmup_comments_per_day", 3), c.subreddits or ["test"], args.topics))
     elif args.action == "ready":
         _print(warmup.check_ready())
+    elif args.action == "sweep":
+        subs = args.subs or c.subreddits
+        if not subs:
+            print("No subreddits. Add some: rap config add-sub Christian")
+            return 2
+        rows = warmup.sweep(subs, args.per_sub)
+        _print({"candidates": len(rows), "preview": rows[:8]})
+    elif args.action == "comment":
+        if not args.post_id or not args.text:
+            print("need --post-id and --text")
+            return 2
+        _print(warmup.post_comment(args.post_id, args.text, sub=args.sub, live=args.live))
+    return 0
+
+
+def cmd_mode(args) -> int:
+    c = Config.load()
+    if args.value:
+        c.set("mode", args.value)
+        c.save()
+    _print({"mode": c.mode})
     return 0
 
 
@@ -285,9 +306,19 @@ def build_parser() -> argparse.ArgumentParser:
     dr.set_defaults(func=cmd_draft)
 
     w = sub.add_parser("warmup", help="account warm-up protocol")
-    w.add_argument("action", choices=["start", "status", "plan", "ready"])
+    w.add_argument("action", choices=["start", "status", "plan", "ready", "sweep", "comment"])
     w.add_argument("--topics", nargs="*", default=None)
+    w.add_argument("--subs", nargs="*", default=None)
+    w.add_argument("--per-sub", type=int, default=25)
+    w.add_argument("--post-id", default=None)
+    w.add_argument("--sub", default=None)
+    w.add_argument("--text", default=None)
+    w.add_argument("--live", action="store_true")
     w.set_defaults(func=cmd_warmup)
+
+    md = sub.add_parser("mode", help="set the operating mode: warmup (no links) or normal")
+    md.add_argument("value", nargs="?", choices=["warmup", "normal"])
+    md.set_defaults(func=cmd_mode)
 
     po = sub.add_parser("post", help="submit a post now (needs --live)")
     po.add_argument("sub")

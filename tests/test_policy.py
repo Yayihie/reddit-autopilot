@@ -7,12 +7,15 @@ import time
 import unittest
 
 
-def fresh():
+def fresh(mode="normal"):
     os.environ["REDDIT_AUTOPILOT_HOME"] = tempfile.mkdtemp()
     from reddit_autopilot import config, policy
 
     importlib.reload(config)
     importlib.reload(policy)
+    c = config.Config.load()
+    c.set("mode", mode)
+    c.save()
     return policy
 
 
@@ -87,6 +90,12 @@ class TestPolicy(unittest.TestCase):
         res = p.check("comment", "Christian", link=True, url="https://x.org", age_days=2)
         self.assertFalse(res["ok"])
         self.assertTrue(any("old" in h for h in res["hard"]))
+
+    def test_warmup_mode_blocks_links(self):
+        p = fresh(mode="warmup")
+        res = p.check("comment", "Christian", link=True, url="https://x.org", comment_karma=500)
+        self.assertFalse(res["ok"])
+        self.assertTrue(any("warm-up mode" in h for h in res["hard"]))
 
 
 if __name__ == "__main__":
