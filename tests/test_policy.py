@@ -71,6 +71,23 @@ class TestPolicy(unittest.TestCase):
         self.assertTrue(p.has_link("see https://www.pacewithgrace.org/bible-verses/doubt"))
         self.assertFalse(p.has_link("no links here at all"))
 
+    def test_link_blocked_below_comment_karma(self):
+        p = fresh()
+        res = p.check("comment", "Christian", link=True, url="https://x.org", comment_karma=2)
+        self.assertFalse(res["ok"])
+        self.assertTrue(any("comment karma" in h for h in res["hard"]))
+
+    def test_link_allowed_with_enough_karma(self):
+        p = fresh()
+        res = p.check("comment", "Christian", link=True, url="https://x.org", comment_karma=200)
+        self.assertTrue(res["ok"], res["hard"])
+
+    def test_link_blocked_for_young_account(self):
+        p = fresh()
+        res = p.check("comment", "Christian", link=True, url="https://x.org", age_days=2)
+        self.assertFalse(res["ok"])
+        self.assertTrue(any("old" in h for h in res["hard"]))
+
 
 if __name__ == "__main__":
     unittest.main()

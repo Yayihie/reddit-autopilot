@@ -33,7 +33,7 @@ DEFAULTS = {
     "min_minutes_between_actions": 20,    # human pace floor
     "nonlink_per_link": 9,                # 9:1 guideline (soft)
     "max_subs_per_link_per_day": 1,       # never spray one URL across subs
-    "min_comment_karma": 1,               # below this, links are blocked (warm up first)
+    "min_comment_karma": 50,              # below this, links are blocked (warm up first)
     "min_account_age_days": 7,
     "ratelimit_extra_seconds": 30,        # padding added to a Reddit cooldown
 }
@@ -121,8 +121,13 @@ def status(cfg: dict | None = None) -> dict:
 
 
 def check(kind: str, sub: str | None, *, link: bool = False, url: str | None = None,
-          texts: list[str] | None = None, cfg: dict | None = None) -> dict:
-    """Return {'ok', 'hard': [..], 'soft': [..]}. hard == block; soft == warn."""
+          texts: list[str] | None = None, cfg: dict | None = None,
+          comment_karma: int | None = None, age_days: float | None = None) -> dict:
+    """Return {'ok', 'hard': [..], 'soft': [..]}. hard == block; soft == warn.
+
+    Pass ``comment_karma`` and ``age_days`` (from whoami) to enforce the link
+    gates; when omitted those two checks are skipped.
+    """
     cfg = {**DEFAULTS, **(cfg or {})}
     state = load_state()
     now = _now()
@@ -151,6 +156,15 @@ def check(kind: str, sub: str | None, *, link: bool = False, url: str | None = N
                 hard.append(f"crisis/self-harm keyword '{k}' present; never link in these threads")
 
     if link:
+        if comment_karma is not None and comment_karma < cfg["min_comment_karma"]:
+            hard.append(
+                f"comment karma {comment_karma} is below {cfg['min_comment_karma']}; a link now "
+                f"will very likely be removed by Reddit. Build comment karma first."
+            )
+        if age_days is not None and age_days < cfg["min_account_age_days"]:
+            hard.append(
+                f"account is {age_days:.1f}d old, below the {cfg['min_account_age_days']}d minimum for links"
+            )
         links_today = _actions_today(state, lambda a: a.get("link"))
         if len(links_today) >= cfg["max_linked_comments_per_day"]:
             hard.append(

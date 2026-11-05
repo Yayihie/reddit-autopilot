@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 
-from reddit_autopilot import policy, queue, reddit_api
+from reddit_autopilot import policy, queue, reddit_api, verify
 
 
 def _execute(item: dict, modhash: str, sess) -> dict:
@@ -47,6 +47,12 @@ def run_due(live: bool = False, spacing_seconds: int = 45, limit: int | None = N
                 results.append({"id": item["id"], "status": "skipped", "result": guard["hard"]})
                 continue
             res = _execute(item, modhash, sess)
+            if res.get("ok") and item["kind"] == "comment" and str(item.get("target", "")).startswith("t3_"):
+                time.sleep(6)
+                res["verification"] = verify.check_and_log(
+                    item["target"][3:], res.get("id") or "", item.get("target"))
+                if res["verification"].get("removed"):
+                    res["ok"] = False  # do not silently count a removed action as done
             status = "done" if res.get("ok") else "failed"
             queue.mark(item["id"], status, json.dumps(res))
             results.append({"id": item["id"], "status": status, "result": res})

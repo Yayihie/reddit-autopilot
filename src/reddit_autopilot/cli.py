@@ -15,9 +15,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
-from reddit_autopilot import browser, browser_cdp, health, planner, policy, queue, reddit_api, scheduler, warmup
+from reddit_autopilot import browser, browser_cdp, health, planner, policy, queue, reddit_api, scheduler, verify, warmup
 from reddit_autopilot.config import Config
 
 
@@ -94,10 +95,16 @@ def cmd_warmup(args) -> int:
     return 0
 
 
-def _guard(kind: str, sub, *, link=False, url=None, texts=None, enforce=True) -> bool:
+def _guard(kind: str, sub, *, link=False, url=None, texts=None, enforce=True, account=None) -> bool:
     """Run the policy guard. Returns False to block. In dry-run (enforce=False)
     blockers are reported but not enforced, since nothing is actually posted."""
-    res = policy.check(kind, sub, link=link, url=url, texts=texts)
+    ck = ag = None
+    if account and account.get("logged_in"):
+        ck = (account.get("karma") or {}).get("comment")
+        created = account.get("created_utc")
+        if created:
+            ag = (time.time() - created) / 86400
+    res = policy.check(kind, sub, link=link, url=url, texts=texts, comment_karma=ck, age_days=ag)
     if res["soft"]:
         _print({"policy_warnings": res["soft"]})
     if not res["ok"]:
@@ -113,8 +120,12 @@ def cmd_policy(args) -> int:
 
 def cmd_post(args) -> int:
     link = args.type == "link"
+    try:
+        acct = reddit_api.whoami()
+    except Exception:
+        acct = None
     if not _guard("submit_link" if link else "submit_text", args.sub, link=link, url=args.url,
-                  texts=[args.title, args.text or "", args.url or ""], enforce=args.live):
+                  texts=[args.title, args.text or "", args.url or ""], enforce=args.live, account=acct):
         return 1
     if not _require_live(args):
         _print({"would_post": {"sub": args.sub, "title": args.title, "type": args.type, "url": args.url}})
@@ -132,18 +143,31 @@ def cmd_post(args) -> int:
 
 
 def cmd_comment(args) -> int:
-    if not _guard("comment", None, link=policy.has_link(args.text), texts=[args.text], enforce=args.live):
+    try:
+        acct = reddit_api.whoami()
+    except Exception:
+        acct = None
+    if not _guard("comment", None, link=policy.has_link(args.text), texts=[args.text],
+                  enforce=args.live, account=acct):
         return 1
     if not _require_live(args):
         _print({"would_comment": {"thing_id": args.thing_id, "text": args.text}})
         return 0
-    who = reddit_api.whoami()
+    who = acct or reddit_api.whoami()
     if not who.get("logged_in"):
         print("Not logged in to Reddit in Chrome.")
         return 1
     res = reddit_api.comment(args.thing_id, args.text, who["modhash"])
     _print(res)
+    if res.get("ok") and args.thing_id.startswith("t3_"):
+        time.sleep(6)
+        _print({"verification": verify.check_and_log(args.thing_id[3:], res.get("id") or "")})
     return 0 if res.get("ok") else 1
+
+
+def cmd_verify(args) -> int:
+    _print(verify.check_comment(args.post_id, args.comment_id))
+    return 0
 
 
 def cmd_open_tab(args) -> int:
@@ -290,6 +314,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     pol = sub.add_parser("policy", help="show Reddit anti-ban guardrails and today's status")
     pol.set_defaults(func=cmd_policy)
+
+    vf = sub.add_parser("verify", help="check whether a posted comment survived (removal detection)")
+    vf.add_argument("post_id", help="the post id (without t3_)")
+    vf.add_argument("comment_id", help="the comment id (t1_... or bare)")
+    vf.set_defaults(func=cmd_verify)
 
     sc = sub.add_parser("schedule", help="queue an action for later")
     sc.add_argument("kind", choices=["text", "link", "comment"])
