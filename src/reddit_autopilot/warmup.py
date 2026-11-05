@@ -125,6 +125,37 @@ def post_comment(post_id: str, text: str, sub: str | None = None, live: bool = F
     return res
 
 
+def upvote_recent(subs: list[str], n: int = 3, live: bool = False, sess=None) -> dict:
+    """Light, normal upvoting of good content in the target subs (not manipulation)."""
+    try:
+        acct = reddit_api.whoami()
+    except Exception:
+        acct = None
+    if not acct or not acct.get("logged_in"):
+        return {"ok": False, "error": "not logged in"}
+    picked = []
+    for s in subs:
+        if len(picked) >= n:
+            break
+        try:
+            rows = fetch_recent(s, limit=8)
+        except Exception:
+            continue
+        for r in rows[:2]:
+            if len(picked) >= n:
+                break
+            picked.append((s, r["id"]))
+    if not live:
+        return {"ok": True, "dry_run": True, "would_upvote": picked}
+    sess = sess or reddit_api.get_session()
+    done = []
+    for s, pid in picked:
+        res = reddit_api.vote("t3_" + pid, 1, acct["modhash"], sess)
+        done.append({"sub": s, "id": pid, "ok": res.get("ok")})
+        time.sleep(5)
+    return {"ok": True, "upvoted": done}
+
+
 # ------------------------------------------------------------------ legacy plan helpers
 
 def plan_day(per_day: int = 3, subs: list[str] | None = None, topics: list[str] | None = None) -> dict:
