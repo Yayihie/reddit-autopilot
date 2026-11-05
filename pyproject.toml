@@ -22,6 +22,8 @@ dependencies = []
 [project.optional-dependencies]
 # Planning/scoring engine (latent-9/reddit-growth-mcp on PyPI)
 growth = ["reddit-growth-mcp>=0.2.1"]
+# CDP action backend (drives isolated Chrome over the DevTools protocol)
+cdp = ["websockets>=12.0"]
 # Alternative action backend: websocket bridge to a Chrome extension (1146345502/reddit-skills)
 bridge = ["websockets>=12.0"]
 dev = ["pytest>=8.0", "ruff>=0.6"]

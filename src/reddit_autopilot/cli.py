@@ -17,7 +17,7 @@ import json
 import sys
 from datetime import datetime, timedelta, timezone
 
-from reddit_autopilot import browser, health, planner, queue, reddit_api, scheduler, warmup
+from reddit_autopilot import browser, browser_cdp, health, planner, queue, reddit_api, scheduler, warmup
 from reddit_autopilot.config import Config
 
 
@@ -127,6 +127,23 @@ def cmd_open_tab(args) -> int:
     tab = browser.open_tab(args.url or "https://www.reddit.com")
     _print({"opened": tab})
     return 0
+
+
+def cmd_browser(args) -> int:
+    if args.action == "launch":
+        ok = browser_cdp.launch()
+        _print({"launched": ok, "running": browser_cdp.running(), "profile": browser_cdp.profile_dir()})
+        return 0 if ok else 1
+    if args.action == "status":
+        _print({
+            "cdp_running": browser_cdp.running(),
+            "version": (browser_cdp.version() or {}).get("Browser"),
+            "reddit_tab": bool(browser_cdp.find_tab()),
+            "profile": browser_cdp.profile_dir(),
+            "guidance": "Run `rap browser launch`, log into Reddit in that window, then `rap login`.",
+        })
+        return 0
+    return 2
 
 
 def cmd_schedule(args) -> int:
@@ -243,6 +260,10 @@ def build_parser() -> argparse.ArgumentParser:
     ot = sub.add_parser("open-tab", help="open a URL in Chrome and report the tab")
     ot.add_argument("url", nargs="?", default="https://www.reddit.com")
     ot.set_defaults(func=cmd_open_tab)
+
+    br = sub.add_parser("browser", help="manage the isolated CDP Chrome instance")
+    br.add_argument("action", choices=["launch", "status"])
+    br.set_defaults(func=cmd_browser)
 
     sc = sub.add_parser("schedule", help="queue an action for later")
     sc.add_argument("kind", choices=["text", "link", "comment"])
