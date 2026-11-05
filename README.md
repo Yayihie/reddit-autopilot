@@ -38,9 +38,20 @@ uv tool install git+https://github.com/Yayihie/reddit-autopilot.git
 uv tool install --with reddit-growth-mcp "reddit-autopilot @ git+https://github.com/Yayihie/reddit-autopilot.git"
 ```
 
-Requirements for the browser backend: **macOS + Google Chrome**, with
-`Chrome → View → Developer → Allow JavaScript from Apple Events` enabled
-(restart Chrome), and you logged into Reddit in Chrome.
+## Backends
+
+The action layer can drive Reddit two ways; it auto-selects:
+
+| Backend | What it needs | Notes |
+|---|---|---|
+| **CDP** (recommended) | `rap browser launch` — an isolated Chrome on port 9222 | No permissions, no settings. `pip install 'reddit-autopilot[cdp]'` |
+| **AppleScript** | macOS + Chrome with `View → Developer → Allow JavaScript from Apple Events` on | Works, but that setting cannot be enabled by any script — you must tick it yourself |
+
+For CDP: `rap browser launch`, log into Reddit in that window, then `rap login`.
+
+> Heads-up: a brand-new, history-less browser profile can hit Reddit's
+> "blocked by network security" page. A real logged-in account (with a little
+> normal browsing) clears it; a pristine automated profile may not.
 
 ## Quick start
 
@@ -64,6 +75,7 @@ Nothing writes to Reddit until you pass `--live`.
 | Command | What it does |
 |---|---|
 | `doctor [--with-browser]` | Environment + Chrome + session diagnostics |
+| `browser launch\|status` | Manage the isolated CDP Chrome instance |
 | `login` / `health` | Session status / best-effort shadowban probe |
 | `plan [subs...]` | Full growth plan (best target, cross-posts, recipe, timing) |
 | `compare [subs...]` | Rank subreddits by growth / viral / removal-safety |
