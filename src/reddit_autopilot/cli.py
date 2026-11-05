@@ -17,7 +17,7 @@ import json
 import sys
 from datetime import datetime, timedelta, timezone
 
-from reddit_autopilot import browser, browser_cdp, health, planner, queue, reddit_api, scheduler, warmup
+from reddit_autopilot import browser, browser_cdp, health, planner, policy, queue, reddit_api, scheduler, warmup
 from reddit_autopilot.config import Config
 
 
@@ -94,7 +94,28 @@ def cmd_warmup(args) -> int:
     return 0
 
 
+def _guard(kind: str, sub, *, link=False, url=None, texts=None, enforce=True) -> bool:
+    """Run the policy guard. Returns False to block. In dry-run (enforce=False)
+    blockers are reported but not enforced, since nothing is actually posted."""
+    res = policy.check(kind, sub, link=link, url=url, texts=texts)
+    if res["soft"]:
+        _print({"policy_warnings": res["soft"]})
+    if not res["ok"]:
+        _print({"blocked_by_policy" if enforce else "policy_blockers_dry_run": res["hard"]})
+        return not enforce
+    return True
+
+
+def cmd_policy(args) -> int:
+    _print({"limits": policy.DEFAULTS, "status": policy.status()})
+    return 0
+
+
 def cmd_post(args) -> int:
+    link = args.type == "link"
+    if not _guard("submit_link" if link else "submit_text", args.sub, link=link, url=args.url,
+                  texts=[args.title, args.text or "", args.url or ""], enforce=args.live):
+        return 1
     if not _require_live(args):
         _print({"would_post": {"sub": args.sub, "title": args.title, "type": args.type, "url": args.url}})
         return 0
@@ -111,6 +132,8 @@ def cmd_post(args) -> int:
 
 
 def cmd_comment(args) -> int:
+    if not _guard("comment", None, link=policy.has_link(args.text), texts=[args.text], enforce=args.live):
+        return 1
     if not _require_live(args):
         _print({"would_comment": {"thing_id": args.thing_id, "text": args.text}})
         return 0
@@ -264,6 +287,9 @@ def build_parser() -> argparse.ArgumentParser:
     br = sub.add_parser("browser", help="manage the isolated CDP Chrome instance")
     br.add_argument("action", choices=["launch", "status"])
     br.set_defaults(func=cmd_browser)
+
+    pol = sub.add_parser("policy", help="show Reddit anti-ban guardrails and today's status")
+    pol.set_defaults(func=cmd_policy)
 
     sc = sub.add_parser("schedule", help="queue an action for later")
     sc.add_argument("kind", choices=["text", "link", "comment"])

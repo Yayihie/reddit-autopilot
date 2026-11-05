@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 
-from reddit_autopilot import queue, reddit_api
+from reddit_autopilot import policy, queue, reddit_api
 
 
 def _execute(item: dict, modhash: str, sess) -> dict:
@@ -37,6 +37,15 @@ def run_due(live: bool = False, spacing_seconds: int = 45, limit: int | None = N
 
     for i, item in enumerate(items):
         if live:
+            is_link = item["kind"] == "submit_link" or (
+                item["kind"] == "comment" and reddit_api.policy.has_link(item.get("body") or "")
+            )
+            guard = policy.check(item["kind"], item.get("target"), link=is_link, url=item.get("url"),
+                                 texts=[item.get("title") or "", item.get("body") or ""])
+            if not guard["ok"]:
+                queue.mark(item["id"], "skipped", json.dumps({"blocked_by_policy": guard["hard"]}))
+                results.append({"id": item["id"], "status": "skipped", "result": guard["hard"]})
+                continue
             res = _execute(item, modhash, sess)
             status = "done" if res.get("ok") else "failed"
             queue.mark(item["id"], status, json.dumps(res))

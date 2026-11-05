@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 
-from reddit_autopilot import browser
+from reddit_autopilot import browser, policy
 
 API = "https://www.reddit.com"
 
@@ -108,6 +108,7 @@ def whoami(sess=None) -> dict:
         "logged_in": bool(data.get("name")),
         "name": data.get("name"),
         "modhash": data.get("modhash"),
+        "created_utc": data.get("created_utc"),
         "karma": {"link": data.get("link_karma"), "comment": data.get("comment_karma")},
     }
 
@@ -116,27 +117,40 @@ def subreddit_rules(sub: str, sess=None) -> dict:
     return (sess or get_session()).fetch(f"/r/{sub}/about/rules.json")
 
 
+def _note_result(res: dict, kind: str, sub: str | None, *, link: bool = False, url: str | None = None) -> dict:
+    """Feed every attempt back into the policy engine (rate-limit detection + audit log)."""
+    errs = res.get("errors") if isinstance(res, dict) else None
+    if errs and "ratelimit" in json.dumps(errs).lower():
+        policy.record_ratelimit(300)
+    if isinstance(res, dict) and res.get("ok"):
+        policy.record_action(kind, sub, link=link, url=url)
+    return res
+
+
 def submit_text(sub: str, title: str, text: str, modhash: str, sess=None) -> dict:
     body = {"api_type": "json", "kind": "self", "sr": sub, "title": title, "text": text, "uh": modhash}
-    return _flatten_submit((sess or get_session()).fetch("/api/submit", "POST", body))
+    return _note_result(_flatten_submit((sess or get_session()).fetch("/api/submit", "POST", body)),
+                        "submit_text", sub)
 
 
 def submit_link(sub: str, title: str, url: str, modhash: str, sess=None) -> dict:
     body = {"api_type": "json", "kind": "link", "sr": sub, "title": title, "url": url, "uh": modhash}
-    return _flatten_submit((sess or get_session()).fetch("/api/submit", "POST", body))
+    return _note_result(_flatten_submit((sess or get_session()).fetch("/api/submit", "POST", body)),
+                        "submit_link", sub, link=True, url=url)
 
 
 def comment(thing_id: str, text: str, modhash: str, sess=None) -> dict:
     body = {"api_type": "json", "thing_id": thing_id, "text": text, "uh": modhash}
     res = (sess or get_session()).fetch("/api/comment", "POST", body)
     if not res.get("ok"):
-        return res
+        return _note_result(res, "comment", None)
     j = res["data"].get("json") or {}
     errors = j.get("errors") or []
     if errors:
-        return {"ok": False, "errors": errors}
+        return _note_result({"ok": False, "errors": errors}, "comment", None)
     things = (j.get("data") or {}).get("things") or [{}]
-    return {"ok": True, "id": things[0].get("data", {}).get("id")}
+    return _note_result({"ok": True, "id": things[0].get("data", {}).get("id")},
+                        "comment", None, link=policy.has_link(text))
 
 
 def vote(thing_id: str, direction: int, modhash: str, sess=None) -> dict:
