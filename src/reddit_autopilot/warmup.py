@@ -19,11 +19,17 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 
-from reddit_autopilot import content, policy, reddit_api, verify
-from reddit_autopilot.config import HOME
+from reddit_autopilot import activation, content, policy, reddit_api, verify
+from reddit_autopilot.brand import is_hashmark
+from reddit_autopilot.config import home
 
-STATE_PATH = HOME / "warmup.json"
-CANDIDATES_PATH = HOME / "warmup-candidates.json"
+
+def state_path():
+    return home() / "warmup.json"
+
+
+def candidates_path():
+    return home() / "warmup-candidates.json"
 
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
                     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
@@ -35,14 +41,16 @@ SKIP = ["suicide", "kill myself", "killing myself", "end my life", "want to die"
 
 
 def _load() -> dict:
-    if STATE_PATH.exists():
-        return json.loads(STATE_PATH.read_text())
+    path = state_path()
+    if path.exists():
+        return json.loads(path.read_text())
     return {"started": None, "days_done": 0, "history": []}
 
 
 def _save(state: dict) -> None:
-    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STATE_PATH.write_text(json.dumps(state, indent=2))
+    path = state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2))
 
 
 def fetch_recent(sub: str, limit: int = 40) -> list[dict]:
@@ -80,8 +88,9 @@ def sweep(subs: list[str], per_sub: int = 25, spacing: float = 8.0) -> list[dict
             rows.append({"sub": s, "error": str(e)})
         if i < len(subs) - 1:
             time.sleep(spacing)
-    CANDIDATES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CANDIDATES_PATH.write_text(json.dumps(rows, indent=2))
+    path = candidates_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rows, indent=2))
     return rows
 
 
@@ -99,10 +108,16 @@ def post_comment(post_id: str, text: str, sub: str | None = None, live: bool = F
     q = qualifies(text)
     if not q["ok"]:
         return {"ok": False, "blocked": q["reason"]}
-    try:
-        acct = reddit_api.whoami()
-    except Exception:
-        acct = None
+    if live:
+        blocked = activation.blockers(live=True, kind="comment")
+        if blocked:
+            return {"ok": False, "blocked_by_activation": blocked}
+    acct = None
+    if live:
+        try:
+            acct = reddit_api.whoami()
+        except Exception:
+            acct = None
     guard = policy.check("comment", sub, link=False, texts=[text],
                          comment_karma=((acct or {}).get("karma") or {}).get("comment"))
     if not guard["ok"]:
@@ -127,6 +142,12 @@ def post_comment(post_id: str, text: str, sub: str | None = None, live: bool = F
 
 def upvote_recent(subs: list[str], n: int = 3, live: bool = False, sess=None) -> dict:
     """Light, normal upvoting of good content in the target subs (not manipulation)."""
+    if is_hashmark():
+        return {"ok": False, "blocked": "Hashmark forbids votes, including warm-up upvotes"}
+    if live:
+        blocked = activation.blockers(live=True, kind="vote")
+        if blocked:
+            return {"ok": False, "blocked_by_activation": blocked}
     try:
         acct = reddit_api.whoami()
     except Exception:

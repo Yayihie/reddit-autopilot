@@ -15,9 +15,13 @@ import json
 import time
 
 from reddit_autopilot import reddit_api
-from reddit_autopilot.config import HOME
+from reddit_autopilot.config import home
 
-REMOVALS_PATH = HOME / "removals.jsonl"
+
+def removals_path():
+    return home() / "removals.jsonl"
+
+
 REMOVED_TEXT = "[ Removed by Reddit ]"
 REMOVED_MOD = "[ Removed by moderators ]"
 DELETED_TEXT = "[deleted]"
@@ -64,8 +68,9 @@ def check_comment(post_id: str, comment_id: str, sess=None) -> dict:
 
 
 def log_removal(kind: str, sub: str | None, item_id: str, verdict: dict) -> None:
-    REMOVALS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with REMOVALS_PATH.open("a") as f:
+    path = removals_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as f:
         f.write(json.dumps({
             "ts": time.time(), "kind": kind, "sub": sub, "id": item_id, "verdict": verdict,
         }) + "\n")

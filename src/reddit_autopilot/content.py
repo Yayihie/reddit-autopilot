@@ -33,6 +33,11 @@ def human_jitter(base_minutes: int, spread: float = 0.4) -> timedelta:
 
 
 def warmup_comments(per_day: int, topics: list[str] | None = None) -> list[str]:
+    from reddit_autopilot.brand import HASHMARK_WARMUP_BANK, is_hashmark
+
+    if is_hashmark():
+        bank = list(HASHMARK_WARMUP_BANK)
+        return random.sample(bank, k=min(per_day, len(bank)))
     topics = topics or ["getting started", "picking the right tool", "scaling up"]
     picks = random.sample(WARMUP_COMMENT_BANK, k=min(per_day, len(WARMUP_COMMENT_BANK)))
     out = []

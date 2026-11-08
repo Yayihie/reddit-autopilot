@@ -8,6 +8,7 @@ import unittest
 
 
 def fresh(mode="normal"):
+    os.environ.pop("RAP_PROFILE", None)
     os.environ["REDDIT_AUTOPILOT_HOME"] = tempfile.mkdtemp()
     from reddit_autopilot import config, policy
 
@@ -68,6 +69,12 @@ class TestPolicy(unittest.TestCase):
         # last action is ~1000s ago so the min-gap passes; hourly cap should trip
         res = p.check("comment", "Christian")
         self.assertFalse(res["ok"])
+
+    def test_url_in_text_counts_as_link(self):
+        p = fresh(mode="warmup")
+        res = p.check("submit_text", "Christian", texts=["read https://pacewithgrace.org"])
+        self.assertFalse(res["ok"])
+        self.assertTrue(any("warm-up mode" in h for h in res["hard"]))
 
     def test_has_link(self):
         p = fresh()

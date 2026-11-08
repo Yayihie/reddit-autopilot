@@ -14,12 +14,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-from reddit_autopilot import browser, browser_cdp, health, planner, policy, queue, reddit_api, scheduler, verify, warmup
-from reddit_autopilot.config import Config
+from reddit_autopilot import (
+    activation,
+    browser,
+    browser_cdp,
+    health,
+    planner,
+    policy,
+    queue,
+    reddit_api,
+    scheduler,
+    verify,
+    warmup,
+)
+from reddit_autopilot.config import Config, home, profile_name
 
 
 def _print(obj) -> None:
@@ -33,24 +46,77 @@ def _require_live(args) -> bool:
     return True
 
 
+def _hashmark_network_blocked(command: str) -> bool:
+    """Refuse Reddit/browser/session commands for the Hashmark profile."""
+    if not activation.is_hashmark():
+        return False
+    _print({
+        "blocked": True,
+        "command": command,
+        "reason": (
+            "Hashmark setup forbids Reddit session, CDP, AppleScript, cookie, and "
+            "login commands here. The parent-desktop Reddit session must not be copied. "
+            "Draft/dry-run post, comment, and queue inspection stay local."
+        ),
+        "home": str(home()),
+    })
+    return True
+
+
+def _planning_blocked(command: str) -> bool:
+    if not activation.is_hashmark():
+        return False
+    if Config.load().get("allow_network_planning", False):
+        return False
+    _print({
+        "blocked": True,
+        "command": command,
+        "reason": (
+            "Hashmark allow_network_planning is false. plan/compare/draft call the "
+            "reddit-growth CLI, which hits Arctic Shift over the network and will hit "
+            "live Reddit if REDDIT_CLIENT_ID is set. They do not post, but this setup "
+            "keeps them off until a reviewer enables the flag."
+        ),
+    })
+    return True
+
+
+def _live_blocked(kind: str, live: bool) -> bool:
+    blocked = activation.blockers(live=live, kind=kind)
+    if not blocked:
+        return False
+    _print({"blocked_by_activation": blocked})
+    return True
+
+
 # --------------------------------------------------------------------------- commands
 
 def cmd_doctor(args) -> int:
-    _print(health.doctor(with_browser=args.with_browser))
+    if args.with_browser and _hashmark_network_blocked("doctor --with-browser"):
+        return 1
+    report = health.doctor(with_browser=args.with_browser)
+    report["activation"] = activation.status()
+    _print(report)
     return 0
 
 
 def cmd_login(args) -> int:
+    if _hashmark_network_blocked("login"):
+        return 1
     _print(health.login_status())
     return 0
 
 
 def cmd_health(args) -> int:
+    if _hashmark_network_blocked("health"):
+        return 1
     _print(health.shadowban_probe(args.sub))
     return 0
 
 
 def cmd_plan(args) -> int:
+    if _planning_blocked("plan"):
+        return 1
     subs = args.subs or Config.load().subreddits
     if not subs:
         print("No subreddits given. Pass them or run: rap config add-sub <name>")
@@ -64,6 +130,8 @@ def cmd_plan(args) -> int:
 
 
 def cmd_compare(args) -> int:
+    if _planning_blocked("compare"):
+        return 1
     subs = args.subs or Config.load().subreddits
     if not planner.available():
         print("Planning backend not installed. Install with: pip install 'reddit-autopilot[growth]'")
@@ -74,6 +142,8 @@ def cmd_compare(args) -> int:
 
 
 def cmd_draft(args) -> int:
+    if _planning_blocked("draft"):
+        return 1
     if not planner.available():
         print("Planning backend not installed. Install with: pip install 'reddit-autopilot[growth]'")
         return 3
@@ -91,8 +161,12 @@ def cmd_warmup(args) -> int:
     elif args.action == "plan":
         _print(warmup.plan_day(c.get("warmup_comments_per_day", 3), c.subreddits or ["test"], args.topics))
     elif args.action == "ready":
+        if _hashmark_network_blocked("warmup ready"):
+            return 1
         _print(warmup.check_ready())
     elif args.action == "sweep":
+        if _hashmark_network_blocked("warmup sweep"):
+            return 1
         subs = args.subs or c.subreddits
         if not subs:
             print("No subreddits. Add some: rap config add-sub Christian")
@@ -103,6 +177,8 @@ def cmd_warmup(args) -> int:
         if not args.post_id or not args.text:
             print("need --post-id and --text")
             return 2
+        if args.live and _live_blocked("comment", True):
+            return 1
         _print(warmup.post_comment(args.post_id, args.text, sub=args.sub, live=args.live))
     return 0
 
@@ -130,7 +206,9 @@ def _guard(kind: str, sub, *, link=False, url=None, texts=None, enforce=True, ac
         _print({"policy_warnings": res["soft"]})
     if not res["ok"]:
         _print({"blocked_by_policy" if enforce else "policy_blockers_dry_run": res["hard"]})
-        return not enforce
+        if enforce or activation.is_hashmark():
+            return False
+        return True
     return True
 
 
@@ -141,17 +219,23 @@ def cmd_policy(args) -> int:
 
 def cmd_post(args) -> int:
     link = args.type == "link"
-    try:
-        acct = reddit_api.whoami()
-    except Exception:
-        acct = None
-    if not _guard("submit_link" if link else "submit_text", args.sub, link=link, url=args.url,
-                  texts=[args.title, args.text or "", args.url or ""], enforce=args.live, account=acct):
+    kind = "submit_link" if link else "submit_text"
+    live = bool(getattr(args, "live", False))
+    if live and _live_blocked(kind, True):
+        return 1
+    acct = None
+    if live:
+        try:
+            acct = reddit_api.whoami()
+        except Exception:
+            acct = None
+    if not _guard(kind, args.sub, link=link, url=args.url,
+                  texts=[args.title, args.text or "", args.url or ""], enforce=live, account=acct):
         return 1
     if not _require_live(args):
         _print({"would_post": {"sub": args.sub, "title": args.title, "type": args.type, "url": args.url}})
         return 0
-    who = reddit_api.whoami()
+    who = acct or reddit_api.whoami()
     if not who.get("logged_in"):
         print("Not logged in to Reddit in Chrome.")
         return 1
@@ -164,12 +248,17 @@ def cmd_post(args) -> int:
 
 
 def cmd_comment(args) -> int:
-    try:
-        acct = reddit_api.whoami()
-    except Exception:
-        acct = None
+    live = bool(getattr(args, "live", False))
+    if live and _live_blocked("comment", True):
+        return 1
+    acct = None
+    if live:
+        try:
+            acct = reddit_api.whoami()
+        except Exception:
+            acct = None
     if not _guard("comment", None, link=policy.has_link(args.text), texts=[args.text],
-                  enforce=args.live, account=acct):
+                  enforce=live, account=acct):
         return 1
     if not _require_live(args):
         _print({"would_comment": {"thing_id": args.thing_id, "text": args.text}})
@@ -187,17 +276,23 @@ def cmd_comment(args) -> int:
 
 
 def cmd_verify(args) -> int:
+    if _hashmark_network_blocked("verify"):
+        return 1
     _print(verify.check_comment(args.post_id, args.comment_id))
     return 0
 
 
 def cmd_open_tab(args) -> int:
+    if _hashmark_network_blocked("open-tab"):
+        return 1
     tab = browser.open_tab(args.url or "https://www.reddit.com")
     _print({"opened": tab})
     return 0
 
 
 def cmd_browser(args) -> int:
+    if args.action == "launch" and _hashmark_network_blocked("browser launch"):
+        return 1
     if args.action == "launch":
         ok = browser_cdp.launch()
         _print({"launched": ok, "running": browser_cdp.running(), "profile": browser_cdp.profile_dir()})
@@ -242,8 +337,15 @@ def cmd_queue(args) -> int:
 def cmd_run(args) -> int:
     if not args.live:
         print("(dry-run — the queue was inspected but nothing was posted. Add --live to execute.)")
+    elif _live_blocked("queue", True):
+        return 1
     results = scheduler.run_due(live=args.live, spacing_seconds=0 if args.no_spacing else 45)
     _print({"processed": len(results), "results": results})
+    return 0
+
+
+def cmd_profile_status(args) -> int:
+    _print(activation.status())
     return 0
 
 
@@ -253,7 +355,7 @@ def cmd_config(args) -> int:
         _print(c.data)
     elif args.action == "init":
         c.save()
-        _print({"wrote": str(c.path)})
+        _print({"wrote": str(c.path), "profile": profile_name() or "default", "home": str(home())})
     elif args.action == "add-sub":
         subs = set(c.subreddits)
         subs.add(args.name)
@@ -275,6 +377,12 @@ def build_parser() -> argparse.ArgumentParser:
         prog="reddit-autopilot",
         description="All-in-one Reddit growth system: plan, warm up, schedule, and act "
                     "through your real browser session. No API keys.",
+    )
+    p.add_argument(
+        "--profile",
+        default=None,
+        help="Brand profile (e.g. hashmark). Isolates state under "
+             "~/.reddit-autopilot/profiles/<name>. Omit to keep the default/PWG home.",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -346,6 +454,9 @@ def build_parser() -> argparse.ArgumentParser:
     pol = sub.add_parser("policy", help="show Reddit anti-ban guardrails and today's status")
     pol.set_defaults(func=cmd_policy)
 
+    pr = sub.add_parser("profile", help="show isolated brand profile, home path, and live-send gates")
+    pr.set_defaults(func=cmd_profile_status)
+
     vf = sub.add_parser("verify", help="check whether a posted comment survived (removal detection)")
     vf.add_argument("post_id", help="the post id (without t3_)")
     vf.add_argument("comment_id", help="the comment id (t1_... or bare)")
@@ -383,8 +494,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "profile", None):
+        os.environ["RAP_PROFILE"] = args.profile
     try:
         return args.func(args)
+    except activation.SessionBlocked as e:
+        print(f"session blocked: {e}", file=sys.stderr)
+        return 1
     except browser.BrowserError as e:
         print(f"browser error: {e}", file=sys.stderr)
         print("Run `rap doctor --with-browser` to diagnose.", file=sys.stderr)

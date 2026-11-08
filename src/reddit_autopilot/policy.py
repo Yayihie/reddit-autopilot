@@ -23,9 +23,13 @@ from __future__ import annotations
 import json
 import time
 
-from reddit_autopilot.config import HOME
+from reddit_autopilot import brand as brand_mod
+from reddit_autopilot.config import home
 
-STATE_PATH = HOME / "policy-state.json"
+
+def state_path():
+    return home() / "policy-state.json"
+
 
 DEFAULTS = {
     "max_linked_comments_per_day": 1,     # your cadence: 1 linked comment/day, all subs
@@ -64,18 +68,20 @@ def _today() -> str:
 
 
 def load_state() -> dict:
-    if STATE_PATH.exists():
+    path = state_path()
+    if path.exists():
         try:
-            return json.loads(STATE_PATH.read_text())
+            return json.loads(path.read_text())
         except json.JSONDecodeError:
             pass
     return {"actions": [], "ratelimit_until": 0, "sub_cooldowns": {}}
 
 
 def save_state(state: dict) -> None:
-    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    path = state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
     state["actions"] = state.get("actions", [])[-500:]
-    STATE_PATH.write_text(json.dumps(state, indent=2))
+    path.write_text(json.dumps(state, indent=2))
 
 
 def _actions_today(state: dict, kind_pred=None) -> list[dict]:
@@ -162,6 +168,16 @@ def check(kind: str, sub: str | None, *, link: bool = False, url: str | None = N
         for k in CRISIS_KEYWORDS:
             if k in low:
                 hard.append(f"crisis/self-harm keyword '{k}' present; never link in these threads")
+
+    extra = brand_mod.check(kind, sub, link=link, url=url, texts=texts)
+    hard.extend(extra.get("hard") or [])
+    soft.extend(extra.get("soft") or [])
+
+    combined = [t or "" for t in (texts or [])]
+    if url:
+        combined.append(url)
+    if not link and any(has_link(t) for t in combined):
+        link = True
 
     if link:
         if _current_mode() == "warmup":
