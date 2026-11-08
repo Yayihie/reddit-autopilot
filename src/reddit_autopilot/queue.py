@@ -6,7 +6,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
-from reddit_autopilot.config import QUEUE_PATH
+from reddit_autopilot.config import queue_path
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS queue (
@@ -27,8 +27,9 @@ CREATE INDEX IF NOT EXISTS idx_status_runat ON queue(status, run_at);
 
 
 def _conn() -> sqlite3.Connection:
-    QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    c = sqlite3.connect(QUEUE_PATH)
+    path = queue_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    c = sqlite3.connect(path)
     c.executescript(SCHEMA)
     return c
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 
-from reddit_autopilot import policy, queue, reddit_api, verify
+from reddit_autopilot import activation, policy, queue, reddit_api, verify
 
 
 def _execute(item: dict, modhash: str, sess) -> dict:
@@ -28,6 +28,10 @@ def run_due(live: bool = False, spacing_seconds: int = 45, limit: int | None = N
         items = items[:limit]
     results = []
     sess = modhash = None
+    if live:
+        blocked = activation.blockers(live=True, kind="queue")
+        if blocked:
+            return [{"id": None, "status": "blocked", "result": blocked}]
     if live and items:
         who = reddit_api.whoami()
         if not who.get("logged_in"):
@@ -37,6 +41,12 @@ def run_due(live: bool = False, spacing_seconds: int = 45, limit: int | None = N
 
     for i, item in enumerate(items):
         if live:
+            if item["kind"] == "vote":
+                vote_block = activation.blockers(live=True, kind="vote")
+                if vote_block:
+                    queue.mark(item["id"], "skipped", json.dumps({"blocked_by_activation": vote_block}))
+                    results.append({"id": item["id"], "status": "skipped", "result": vote_block})
+                    continue
             is_link = item["kind"] == "submit_link" or (
                 item["kind"] == "comment" and reddit_api.policy.has_link(item.get("body") or "")
             )

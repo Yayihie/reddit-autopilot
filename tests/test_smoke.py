@@ -10,6 +10,7 @@ class TestCore(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         os.environ["REDDIT_AUTOPILOT_HOME"] = self.tmp
+        os.environ.pop("RAP_PROFILE", None)
         # re-import so the module-level paths pick up the temp home
         import importlib
 
@@ -61,10 +62,18 @@ class TestCore(unittest.TestCase):
         self.assertEqual(args.sub, "python")
 
     def test_dry_run_comment_does_not_call_network(self):
-        from reddit_autopilot import cli
+        from unittest.mock import patch
+
+        from reddit_autopilot import cli, reddit_api
+
+        def boom(*_a, **_k):
+            raise AssertionError("dry-run must not open a Reddit session")
 
         args = cli.build_parser().parse_args(["comment", "t3_x", "--text", "hello"])
-        rc = cli.cmd_comment(args)  # no --live -> safe
+        with patch.object(reddit_api, "whoami", side_effect=boom), \
+             patch.object(reddit_api, "get_session", side_effect=boom), \
+             patch.object(reddit_api, "comment", side_effect=boom):
+            rc = cli.cmd_comment(args)  # no --live -> safe
         self.assertEqual(rc, 0)
 
 

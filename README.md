@@ -104,11 +104,32 @@ Nothing writes to Reddit until you pass `--live`.
 
 See [CREDITS.md](CREDITS.md) for full attribution.
 
+## Brand profiles
+
+Default state is `~/.reddit-autopilot` and is left for the existing PWG install.
+Hashmark must use an isolated home:
+
+```bash
+export RAP_PROFILE=hashmark          # or: rap --profile hashmark …
+# state -> ~/.reddit-autopilot/profiles/hashmark
+rap --profile hashmark profile       # gates, home path, live-send blockers
+rap --profile hashmark config init   # write the packaged Hashmark template
+```
+
+Hashmark stays draft-only: `--live`, CDP, AppleScript, cookie/modhash, votes,
+unattended `LIVE=1` loops, and session probes are blocked. See [HASHMARK.md](HASHMARK.md).
+
 ## Safety model
 
 - Dry-run by default; every write needs `--live`.
+- Dry-run `post` / `comment` / `run` must not open a browser session. Commands
+  that still talk to Reddit without `--live` (`login`, `health`, `verify`,
+  `warmup sweep`, `warmup ready`, `doctor --with-browser`, `plan`/`compare`/`draft`)
+  are listed in HASHMARK.md and are blocked on the Hashmark profile.
 - Human-paced spacing between actions, with jitter (`content.human_jitter`).
 - No bulk account creation, no upvote/brigading, no proxy farms shipped.
+- `scripts/run_forever.sh` defaults to rehearsal. `LIVE=1` is refused when
+  `RAP_PROFILE=hashmark`.
 
 ## Responsible use
 

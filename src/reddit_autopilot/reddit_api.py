@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 
-from reddit_autopilot import browser, policy
+from reddit_autopilot import activation, browser, policy
 
 API = "https://www.reddit.com"
 
@@ -66,6 +66,7 @@ class AppleSession:
 
 def get_session(backend: str | None = None):
     """Return a session object. backend: None=auto, 'cdp', or 'apple'."""
+    activation.reject_browser_session()
     if backend is None:
         from reddit_autopilot import browser_cdp
         backend = "cdp" if browser_cdp.running() else "apple"

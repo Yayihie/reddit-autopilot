@@ -1,0 +1,32 @@
+{
+  "brand": "hashmark",
+  "mode": "warmup",
+  "live_sends_enabled": false,
+  "activation_blocked": true,
+  "allow_unattended": false,
+  "allow_votes": false,
+  "supported_live_backend": "oauth",
+  "manual_review_required": true,
+  "allow_network_planning": false,
+  "earliest_live_at": "2026-11-09T00:00:00-08:00",
+  "target_subreddits": [],
+  "site": "https://playhashmark.com",
+  "disclosure": "I'm on the Hashmark team",
+  "pricing": "Free, no buy-in, credits only",
+  "products": {
+    "football": {
+      "path": "/football",
+      "name": "The Cut Line",
+      "cadence": "weekly lowest-score elimination"
+    },
+    "basketball": {
+      "path": "/basketball",
+      "name": "NBA Monthly Gauntlet",
+      "cadence": "monthly elimination"
+    }
+  },
+  "max_linked_comments_per_day": 1,
+  "max_subs_per_link_per_day": 1,
+  "min_minutes_between_actions": 20,
+  "user_agent": "macos:reddit-autopilot:0.1.0 (Hashmark draft-only; no live send)"
+}

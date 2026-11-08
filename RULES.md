@@ -36,18 +36,19 @@ rules and AutoMod.
 
 ## How `reddit-autopilot` enforces them
 
-Guard lives in `policy.py`; state in `~/.reddit-autopilot/policy-state.json`.
+Guard lives in `policy.py`; state in `~/.reddit-autopilot/policy-state.json`
+(or `~/.reddit-autopilot/profiles/<brand>/` when `RAP_PROFILE` is set).
 
 | Rule | Guard |
 |---|---|
 | 1 - no spam/repeated links | `max_subs_per_link_per_day` = 1: the same URL can never be posted to more than one sub per day. |
-| 1 - no manipulation | The tool never votes or manipulates; only posts/comments as the logged-in account. |
+| 1 - no manipulation | Hashmark forbids votes. Default/PWG code still contains `reddit_api.vote` and `warmup.upvote_recent` — this table is not a runtime guarantee for the default profile. |
 | 2 - self-promo ratio | `nonlink_per_link` = 9: a linked comment is flagged (soft) when non-link activity is below 9x links. |
 | 3 - rate limits | `min_minutes_between_actions` (20), `max_actions_per_hour` (6), and automatic cooldown capture: any `RATELIMIT` response sets a 300s+ block. |
 | 4 - karma/age gates | `min_comment_karma`, `min_account_age_days` (exposed via `whoami`); warm up first. |
 | 5/6 - CQS / shadowban | Post-publish verification (fetch the thread back and confirm the comment appears); a missing comment is a shadow-removal signal. |
 | 7 - per-sub rules | `rap login`/`subreddit_rules` can pull a sub's rules; keep an allowlist of target subs. |
-| 8 - disclosure | Content guardrails in the PWG skills; never claim a false identity. |
+| 8 - disclosure | PWG: content guardrails in the PWG skills. Hashmark: promotional text must include `I'm on the Hashmark team` (`brand.py`). |
 | crisis content | `CRISIS_KEYWORDS` block: never attach a link in a suicide/self-harm/abuse thread. |
 
 ## Daily cadence the tool assumes

@@ -36,9 +36,9 @@ def _base() -> str:
 
 
 def profile_dir() -> str:
-    return os.environ.get(
-        "RAP_CDP_PROFILE", os.path.join(os.path.expanduser("~"), ".reddit-autopilot", "chrome-profile")
-    )
+    from reddit_autopilot.config import home
+
+    return os.environ.get("RAP_CDP_PROFILE", str(home() / "chrome-profile"))
 
 
 def _http(path: str, method: str = "GET", timeout: float = 5.0):
@@ -64,6 +64,9 @@ def version() -> dict | None:
 
 def launch(port: int | None = None, directory: str | None = None) -> bool:
     """Launch the isolated Chrome instance with remote debugging enabled."""
+    from reddit_autopilot import activation
+
+    activation.reject_browser_session()
     port = port or _port()
     d = directory or profile_dir()
     os.makedirs(d, exist_ok=True)

@@ -6,7 +6,7 @@ import os
 import platform
 import shutil
 
-from reddit_autopilot import browser, planner, reddit_api
+from reddit_autopilot import activation, browser, planner, reddit_api
 
 
 def doctor(with_browser: bool = False) -> dict:
@@ -40,6 +40,13 @@ def doctor(with_browser: bool = False) -> dict:
         fixes.append("Chrome -> View -> Developer -> Allow JavaScript from Apple Events (then restart Chrome).")
     if not checks["reddit_tab_open"]:
         fixes.append("Open reddit.com in Chrome and log in.")
+    if activation.is_hashmark():
+        checks["hashmark_draft_only"] = True
+        ok = True
+        fixes = [
+            "Hashmark live browser/CDP/session use is blocked. Draft, queue, and policy checks only.",
+            "Do not copy the parent-desktop Reddit session into this environment.",
+        ]
     return {"ok": ok, "checks": checks, "fixes": fixes}
 
 
